@@ -12,9 +12,9 @@ class FlaskBasicTest(unittest.TestCase):
         pass
 
     def setUp(self):
-        # creates a test client
+        # creates a tests client
         self.app = app.test_client()
-        # propagate the exceptions to the test client
+        # propagate the exceptions to the tests client
         self.app.testing = True
 
     def tearDown(self):
