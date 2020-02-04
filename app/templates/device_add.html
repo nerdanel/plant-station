@@ -1,0 +1,45 @@
+<!-- templates/device_add.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="content-section">
+        <form method="POST" action="">
+            {{ form.hidden_tag() }}
+            <fieldset class="form-group">
+                <legend class="border-bottom mb-4">Add New Device</legend>
+                <div class="form-group">
+                    {{ form.serial_no.label(class="form-control-label") }}
+                    {% if form.serial_no.errors %}
+                        {{ form.serial_no(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.serial_no.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.serial_no(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    {{ form.nickname.label(class="form-control-label") }}
+                    {% if form.nickname.errors %}
+                        {{ form.nickname(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.nickname.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.nickname(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
+            </fieldset>
+            <div class="form-group">
+                {{ form.submit(class="btn btn-outline-info") }}
+                <a class="btn btn-outline-secondary" href="{{ url_for('my_devices') }}" role="button">Cancel</a>
+            </div>
+        </form>
+    </div>
+{% endblock %}

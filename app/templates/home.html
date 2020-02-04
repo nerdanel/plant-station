@@ -1,0 +1,9 @@
+<!-- templates/home.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Welcome to PlantStation!</h1>
+<h5>The perfect solution for the neglectful plant murderer like you. Or me.</h5>
+<img src="{{ url_for('static', filename='dead-plant.gif') }}", width="300", height="300">
+{% endblock %}

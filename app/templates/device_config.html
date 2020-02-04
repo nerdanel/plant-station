@@ -1,0 +1,58 @@
+<!-- templates/device_config.html -->
+
+{% extends "base.html" %}
+
+{% block content %}
+<div class="content-section">
+        <form method="POST" action="">
+            {{ form.hidden_tag() }}
+            <fieldset class="form-group">
+                <legend class="border-bottom mb-4">Device Configuration: {{ device.nickname }}</legend>
+                <div class="form-group">
+                    {{ form.moisture_threshold.label(class="form-control-label") }}
+                    {% if form.moisture_threshold.errors %}
+                        {{ form.moisture_threshold(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.moisture_threshold.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.moisture_threshold(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    {{ form.water_volume_ml.label(class="form-control-label") }}
+                    {% if form.water_volume_ml.errors %}
+                        {{ form.water_volume_ml(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.water_volume_ml.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.water_volume_ml(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    {{ form.frequency_min.label(class="form-control-label") }}
+                    {% if form.frequency_min.errors %}
+                        {{ form.frequency_min(class="form-control form-control-lg is-invalid") }}
+                        <div class="invalid-feedback">
+                            {% for error in form.frequency_min.errors %}
+                                <span>{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        {{ form.frequency_min(class="form-control form-control-lg") }}
+                    {% endif %}
+                </div>
+            </fieldset>
+            <div class="form-group">
+                {{ form.submit(class="btn btn-outline-info") }}
+                <a class="btn btn-outline-secondary" href="{{ url_for('my_devices') }}" role="button">Cancel</a>
+            </div>
+        </form>
+    </div>
+
+{% endblock %}
