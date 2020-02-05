@@ -1,8 +1,25 @@
-from flask import render_template, url_for, flash, redirect, request
+from datetime import datetime
+from flask import (
+    render_template,
+    url_for,
+    flash,
+    redirect,
+    request,
+    make_response,
+    jsonify,
+)
 from flask_login import login_user, current_user, logout_user, login_required
 from sqlalchemy import desc
 from app import app, db, bcrypt
-from app.models import User, Device, DeviceConfig
+from app.models import (
+    User,
+    Device,
+    DeviceConfig,
+    DeviceSchema,
+    DeviceConfigSchema,
+    SensorData,
+    SensorDataSchema,
+)
 from app.forms import (
     RegistrationForm,
     LoginForm,
@@ -98,8 +115,9 @@ def new_device():
             owner_id=current_user.id,
         )
         db.session.add(device)
+        db.session.flush()
+        device_id = device.id
         db.session.commit()
-        device_id = Device.query.filter_by(serial_no=device.serial_no).first().id
         device_conf = DeviceConfig(device_id=device_id)
         db.session.add(device_conf)
         db.session.commit()
@@ -117,7 +135,7 @@ def device_config(device_id):
     last_conf = (
         DeviceConfig.query.filter_by(device_id=device_id)
         .order_by(desc(DeviceConfig.recorded_on))
-        .limit(1).all()[0]
+        .first()
     )
     if form.validate_on_submit():
         device_conf = DeviceConfig(
@@ -125,8 +143,6 @@ def device_config(device_id):
             moisture_threshold=form.moisture_threshold.data,
             water_volume_ml=form.water_volume_ml.data,
             frequency_min=form.frequency_min.data,
-            # ssid=form.ssid.data,
-            # wifi_pw=form.wifi_pw.data,
         )
         db.session.add(device_conf)
         db.session.commit()
@@ -138,14 +154,9 @@ def device_config(device_id):
         form.moisture_threshold.data = last_conf.moisture_threshold
         form.water_volume_ml.data = last_conf.water_volume_ml
         form.frequency_min.data = last_conf.frequency_min
-        # form.ssid.data = last_conf.ssid
-        # form.wifi_pw.data = last_conf.wifi_pw
 
     return render_template(
-        "device_config.html",
-        title="Device Settings",
-        form=form,
-        device=device,
+        "device_config.html", title="Device Settings", form=form, device=device,
     )
 
 
@@ -153,3 +164,73 @@ def device_config(device_id):
 @login_required
 def dashboard():
     return render_template("dashboard.html", title="Dashboard")
+
+
+@app.route("/api/v1/settings", methods=["GET"])
+def api_settings():
+    # TODO: logic for verifying auth with device token passed in headers. Need master table first.
+    device_conf_schema = DeviceConfigSchema()
+    device_schema = DeviceSchema()
+    req_serial = request.args.get("serial", "none")
+    device_conf = (
+        Device.query.filter_by(serial_no=req_serial)
+        .join(DeviceConfig, Device.id == DeviceConfig.device_id)
+        .add_columns(
+            Device.serial_no,
+            Device.id.label("device_id"),
+            DeviceConfig.moisture_threshold,
+            DeviceConfig.water_volume_ml,
+            DeviceConfig.frequency_min,
+            DeviceConfig.recorded_on,
+            DeviceConfig.id.label("config_id"),
+        )
+        .order_by(desc(DeviceConfig.recorded_on))
+        .first()
+    )
+    if device_conf:
+        conf = device_conf_schema.dump(device_conf)
+        device = device_schema.dump(device_conf)
+        response = {"device": device, "settings": conf}
+        return jsonify(response)
+    else:
+        response = {"message": "404. Device not found :("}
+        return jsonify(response), 404
+
+
+@app.route("/api/v1/readings", methods=["GET", "POST"])
+def api_readings():
+    if request.method == "POST":
+        data = request.get_json()
+        device = Device.query.filter_by(id=data.get("device_id")).first()
+        config = DeviceConfig.query.filter_by(id=data.get("config_id")).first()
+        if all([device, config]):
+            reading = SensorData(
+                config_id=int(data.get("config_id")),
+                device_id=int(data.get("device_id")),
+                moisture=float(data.get("moisture")),
+                temperature=float(data.get("temperature")),
+                humidity=float(data.get("humidity")),
+                watered=bool(data.get("watered")),
+                recorded_on=datetime.strptime(
+                    data.get("recorded_on"), "%Y-%m-%dT%H:%M:%S.%f"
+                ),
+            )
+            db.session.add(reading)
+            db.session.flush()
+            reading_id = reading.id
+            db.session.commit()
+            response = make_response("Success, record added!", 201)
+            response.headers["Content-Type"] = "application/json"
+            response.headers["Location"] = f"/api/v1/readings?id={reading_id}"
+            return response
+
+    if request.method == "GET":
+        sensor_data_schema = SensorDataSchema()
+        sensor_data_id = int(request.args.get("id"))
+        sensor_data = SensorData.query.filter_by(id=sensor_data_id).first()
+        if sensor_data:
+            response = sensor_data_schema.dump(sensor_data)
+            return jsonify(response)
+        else:
+            response = {"message": "404. Record not found :("}
+            return jsonify(response), 404

@@ -90,9 +90,8 @@ class DeviceConfigForm(FlaskForm):
         "Water volume (ml)", validators=[DataRequired(), NumberRange(min=10, max=1000)]
     )
     frequency_min = IntegerField(
-        "Measurement frequency (min)", validators=[DataRequired(), NumberRange(min=5, max=180)]
+        "Measurement frequency (min)",
+        validators=[DataRequired(), NumberRange(min=5, max=180)],
     )
-    # ssid = StringField("WiFi Name (SSID)", validators=[DataRequired()])
-    # wifi_pw = StringField("WiFi Password", validators=[DataRequired()])
 
     submit = SubmitField("Update Settings")
