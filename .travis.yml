@@ -4,6 +4,11 @@ python:
 # command to install dependencies
 install:
   - pip install -r requirements.txt
+env:
+  - APP_SETTINGS=config.DevelopmentConfig
+  - EMAIL_USER=no-reply@plant-station.com
+  - EMAIL_PASS=password
+  - EMAIL_OUT=smtp.someemail.com
 # command to run tests
 script:
   - python -m unittest discover
