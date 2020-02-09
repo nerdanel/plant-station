@@ -9,8 +9,9 @@ from flask import (
     jsonify,
 )
 from flask_login import login_user, current_user, logout_user, login_required
+from flask_mail import Message
 from sqlalchemy import desc
-from app import app, db, bcrypt
+from app import app, db, bcrypt, mail
 from app.models import (
     User,
     Device,
@@ -26,6 +27,8 @@ from app.forms import (
     UpdateProfileForm,
     NewDeviceForm,
     DeviceConfigForm,
+    RequestResetForm,
+    ResetPasswordForm,
 )
 
 
@@ -35,8 +38,30 @@ def home():
     return render_template("home.html", title="Home")
 
 
+def send_activation_email(user):
+    token = user.get_token(expires_sec=app.config["ACCOUNT_ACTIVATION_TIMEOUT"])
+    msg = Message(
+        "Activate Your PlantStation Account",
+        sender="no-reply@plant-station.com",
+        recipients=[user.email],
+    )
+    activation_link = url_for("activation_token", token=token, _external=True)
+    content = render_template(
+        "email/activation_email.html",
+        APP_NAME="PlantStation",
+        APP_URL="http://www.plant-station.com/",
+        user=user.username,
+        activation_link=activation_link,
+        preheader="Please activate your PlantStation account.",
+        TITLE="Activate Your Account",
+    )
+    msg.html = content
+    mail.send(msg)
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    # TODO: register as inactive, send email w/ token to confirm account registration.
     if current_user.is_authenticated:
         return redirect(url_for("home"))
     form = RegistrationForm()
@@ -49,34 +74,62 @@ def register():
         )
         db.session.add(user)
         db.session.commit()
-        flash(f"Your account has been created! You can log in.", "success")
+        send_activation_email(user)
+        flash(f"Check your email to activate your account!", "info")
         return redirect(url_for("login"))
     return render_template("register.html", title="Register", form=form)
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/account/activate?token=<token>", methods=["GET", "POST"])
+def activation_token(token):
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
+    user = User.verify_token(token)
+    if user is None:
+        flash("That is an invalid or expired token", "warning")
+        return redirect(url_for("register"))
+    user.active = True
+    db.session.commit()
+    flash("Your account has been activated! You can now log in.", "success")
+    return redirect(url_for("login"))
+    # return render_template("reset_token.html", title="Reset Password", form=form)
+
+
+@app.route("/account/login", methods=["GET", "POST"])
 def login():
+    # TODO: Add 'last_login' to model & here
     if current_user.is_authenticated:
         return redirect(url_for("home"))
     form = LoginForm()
     if form.validate_on_submit():
         user = User.query.filter_by(email=form.email.data).first()
-        if user and bcrypt.check_password_hash(user.password, form.password.data):
+        if (
+            user
+            and bcrypt.check_password_hash(user.password, form.password.data)
+            and user.active is True
+        ):
+            user.last_login = datetime.now()
+            db.session.commit()
             login_user(user, remember=form.remember.data)
             next_page = request.args.get("next")
             return redirect(next_page) if next_page else redirect(url_for("home"))
+        elif user and user.active is False:
+            flash(
+                "You need to activate your account first. Please check your email for the activation link.",
+                "danger",
+            )
         else:
             flash("Login Unsuccessful. Please check email and password", "danger")
     return render_template("login.html", title="Login", form=form)
 
 
-@app.route("/logout")
+@app.route("/account/logout")
 def logout():
     logout_user()
     return redirect(url_for("home"))
 
 
-@app.route("/profile", methods=["GET", "POST"])
+@app.route("/account/profile", methods=["GET", "POST"])
 @login_required
 def profile():
     form = UpdateProfileForm()
@@ -97,14 +150,14 @@ def about():
     return render_template("about.html", title="About")
 
 
-@app.route("/my_devices")
+@app.route("/account/my_devices")
 @login_required
 def my_devices():
     devices = Device.query.filter_by(owner_id=current_user.id).all()
     return render_template("devices.html", title="My Devices", devices=devices)
 
 
-@app.route("/new_device", methods=["GET", "POST"])
+@app.route("/account/my_devices/new_device", methods=["GET", "POST"])
 @login_required
 def new_device():
     form = NewDeviceForm()
@@ -126,7 +179,9 @@ def new_device():
     return render_template("device_add.html", title="Add New Device", form=form)
 
 
-@app.route("/device_config/<device_id>", methods=["GET", "POST"])
+@app.route(
+    "/account/my_devices/device/<int:device_id>/settings", methods=["GET", "POST"]
+)
 @login_required
 def device_config(device_id):
     # TODO: add nickname update option
@@ -160,7 +215,7 @@ def device_config(device_id):
     )
 
 
-@app.route("/dashboard")
+@app.route("/account/dashboard")
 @login_required
 def dashboard():
     return render_template("dashboard.html", title="Dashboard")
@@ -234,3 +289,61 @@ def api_readings():
         else:
             response = {"message": "404. Record not found :("}
             return jsonify(response), 404
+
+
+def send_reset_email(user):
+    token = user.get_token(expires_sec=app.config["PASSWORD_RESET_TIMEOUT"])
+    msg = Message(
+        "Password Reset Request",
+        sender="no-reply@plant-station.com",
+        recipients=[user.email],
+    )
+    reset_link = url_for("reset_token", token=token, _external=True)
+    content = render_template(
+        "email/password_reset.html",
+        APP_NAME=app.config["APP_NAME"],
+        APP_URL=app.config["APP_URL"],
+        user=user.username,
+        reset_link=reset_link,
+        preheader="You requested to reset your password.",
+        TITLE="Password Reset Request",
+    )
+    msg.html = content
+    mail.send(msg)
+
+
+@app.route("/account/reset_password", methods=["GET", "POST"])
+def reset_request():
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
+    form = RequestResetForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data).first()
+        send_reset_email(user)
+        flash(
+            "An email has been sent with instructions to reset your password.", "info"
+        )
+        return redirect(url_for("login"))
+    return render_template("reset_request.html", title="Reset Password", form=form)
+
+
+@app.route("/account/reset_password?token=<token>", methods=["GET", "POST"])
+def reset_token(token):
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
+    user = User.verify_token(token)
+    if user is None:
+        flash("That is an invalid or expired token", "warning")
+        return redirect(url_for("reset_request"))
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        hashed_password = bcrypt.generate_password_hash(form.password.data).decode(
+            "utf-8"
+        )
+        user.password = hashed_password
+        db.session.commit()
+        flash(
+            "Your password has been updated! You can now use it to log in.", "success"
+        )
+        return redirect(url_for("login"))
+    return render_template("reset_token.html", title="Reset Password", form=form)

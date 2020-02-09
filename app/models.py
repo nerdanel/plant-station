@@ -1,7 +1,8 @@
-from app import db, login_manager, ma
-from flask_login import UserMixin
+from datetime import datetime
+from itsdangerous import TimedJSONWebSignatureSerializer as Serializer, SignatureExpired
 from marshmallow import fields
-import datetime
+from flask_login import UserMixin
+from app import db, login_manager, ma, app
 
 
 @login_manager.user_loader
@@ -22,12 +23,29 @@ class User(db.Model, UserMixin):
     username = db.Column(db.String(30), unique=True, nullable=False)
     registered_on = db.Column(db.DateTime, nullable=False)
     devices = db.relationship("Device", backref="owner", lazy=True)
+    active = db.Column(db.Boolean, nullable=False)
+    last_login = db.Column(db.DateTime, nullable=True)
 
     def __init__(self, email, username, password):
         self.email = email
         self.password = password
         self.username = username
-        self.registered_on = datetime.datetime.now()
+        self.registered_on = datetime.now()
+        self.active = False
+        self.last_login = None
+
+    def get_token(self, expires_sec=1800):
+        s = Serializer(app.config["SECRET_KEY"], expires_sec)
+        return s.dumps({"user_id": self.id}).decode("utf-8")
+
+    @staticmethod
+    def verify_token(token):
+        s = Serializer(app.config["SECRET_KEY"])
+        try:
+            user_id = s.loads(token)["user_id"]
+        except SignatureExpired:
+            return None
+        return User.query.get(user_id)
 
     def __repr__(self):
         return f"User('{self.username}', '{self.email}')"
@@ -51,7 +69,7 @@ class Device(db.Model):
     def __init__(self, serial_no, nickname, owner_id):
         self.serial_no = serial_no
         self.nickname = nickname
-        self.registered_on = datetime.datetime.now()
+        self.registered_on = datetime.now()
         self.owner_id = owner_id
 
     def __repr__(self):
@@ -83,7 +101,7 @@ class DeviceConfig(db.Model):
         self.frequency_min = frequency_min
         self.device_id = device_id
         # TODO: deal with server / client time zone differences
-        self.recorded_on = datetime.datetime.now()
+        self.recorded_on = datetime.now()
 
     def __repr__(self):
         return f"DeviceConfig('{self.id}', '{self.device_id}')"
